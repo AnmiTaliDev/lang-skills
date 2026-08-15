@@ -1,4 +1,4 @@
-# lang-skill
+# lang-skills
 
 A collection of agent skills that teach AI coding agents how to write correct code in niche,
 unpopular, or brand-new programming languages that a model doesn't already know well from its
