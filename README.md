@@ -22,7 +22,7 @@ superficially resembles, give it a verified, condensed spec to work from.
 Each skill can be installed individually with [`npx skills`](https://www.npmjs.com/package/skills):
 
 ```bash
-npx skills add AnmiTaliDev/lang-skill --skill cinder-lang
+npx skills add AnmiTaliDev/lang-skills --skill cinder-lang
 ```
 
 Swap `cinder-lang` for the folder name of whichever skill you want from the table above.

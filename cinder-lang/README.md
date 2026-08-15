@@ -22,7 +22,7 @@ so the agent works from verified rules instead of guessing syntax by analogy to 
 With [`npx skills`](https://www.npmjs.com/package/skills):
 
 ```bash
-npx skills add AnmiTaliDev/lang-skill --skill cinder-lang
+npx skills add AnmiTaliDev/lang-skills --skill cinder-lang
 ```
 
 Or copy this folder directly into your agent's skills directory (e.g. `.claude/skills/` for
