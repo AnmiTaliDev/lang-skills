@@ -1,6 +1,7 @@
 # Cinder Language Spec (condensed)
 
-Condensed from the repo's `SPECS.md`. This is the authoritative
+Condensed from the repo's `SPECS.md` and checked against the compiler source
+at commit `a94bfdf`. Where they differ, this file follows the source. This is the
 grammar-level reference — consult it for anything `syntax.md` doesn't
 cover or when in doubt.
 
@@ -8,24 +9,27 @@ cover or when in doubt.
 
 | Principle | Meaning |
 |-----------|---------|
-| Minimalism | 20 keywords total, no macros, no templates, no generics |
+| Minimalism | small keyword set, no macros, no templates, no generics |
 | Explicitness | code does what it says, no hidden behavior/control flow |
-| C compatibility | syntax close to C; C's unsafe parts require `unsafe` |
+| C compatibility | syntax close to C |
 | Bare metal | no runtime, no hidden dependency |
-| Safety | static analysis outside `unsafe`; optionals replace NULL |
+| Safety | static analysis of the whole program; optionals replace NULL |
 | Fast compilation | no macros/templates |
 | LLVM IR | compiler emits LLVM IR; LLVM does the optimizing |
 
-## Full keyword list (20)
+## Keyword list
 
 ```
-as break const continue defer else enum extern fn for if let loop mut
-return switch unsafe use while volatile
+as and break const continue defer else enum extern fn for if let loop mut
+or return switch unsafe use while volatile
 ```
+
+This is the list from `lib/lexer.rb`. `SPECS.md` omits `and` and `or`.
+`unsafe` is deprecated.
 
 Contextual keywords (act as keywords only in the right position, can
 still theoretically be identifiers elsewhere): `static`, `struct`,
-`export`, `sizeof`, `alignof`, `offsetof`, `static_assert`.
+`export`, `packed`, `sizeof`, `alignof`, `offsetof`, `static_assert`.
 
 Reserved literal spellings: `true`, `false`, `none`, `null`.
 
@@ -54,7 +58,7 @@ Reserved literal spellings: `true`, `false`, `none`, `null`.
 | `[N]T` | — | fixed-size array, N is a compile-time constant |
 | `[]T` | — | slice: pointer + `.len`; arrays have no `.len` |
 | `*T` | — | raw pointer; `*const T`, `*volatile T`, `*const volatile T` qualifiers exist |
-| `*void` | — | pointer to unknown type; any `*T` coerces to it implicitly; converting back needs `unsafe` cast |
+| `*void` | — | pointer to unknown type; any `*T` coerces to it implicitly; converting back needs an `as` cast |
 | `?T` | — | optional: T or `none` |
 | `!T` | — | error union: T or an error (usually an enum variant) |
 | `fn(Params) -> Ret` | — | function type/pointer, pointer-sized; `-> Ret` omitted means returns `void` |
@@ -64,20 +68,23 @@ Reserved literal spellings: `true`, `false`, `none`, `null`.
 - Arithmetic: `+ - * / %` (numeric operands; `%` follows dividend's sign)
 - Bitwise: `<< >> & \| ^` (integer operands)
 - Comparison: `== != < <= > >=` (produce `bool`)
-- Logical: `&& \|\| !` (bool operands)
+- Logical: `&& \|\| !` (bool operands). `and` is the same as `&&`.
+  `or` is the same as `\|\|`, with one extra form: after an `==` comparison,
+  a non-bool right operand is compared with the same left value, so
+  `c == 32 or 9 or 10` means `c == 32 \|\| c == 9 \|\| c == 10`. This form
+  does not work with `\|\|`.
 - Assignment: `= += -= *= /= %= <<= >>= &= \|= ^=` (mutable vars only)
 - Unary: `-` `!`; address-of `&`; dereference `*`
-- Cast: `as` — safe numeric casts work outside `unsafe`; other casts
-  (e.g. `*void` -> concrete pointer, integer -> pointer) require `unsafe`
+- Cast: `as` (numeric and pointer casts; unsupported casts are errors)
 
 ```rust
 let a = 42 as f64;
-unsafe { let reg = 0x40001000 as *u32; }
+let reg = 0x40001000 as *u32;
 ```
 
-- Indexing `arr[i]` / slicing `arr[a..b]` — constant out-of-bounds index
-  is a compile error outside `unsafe`; runtime index is bounds-checked in
-  debug builds.
+- Indexing `arr[i]` / slicing `arr[a..b]`: constant out-of-bounds values are
+  not rejected at compile time (`SPECS.md` says they are). Indexes are
+  bounds-checked at runtime in debug builds only.
 - `if { } else { }` as an expression: both branches must produce the same
   type.
 - Struct literal: `Point { x: 1, y: 2 }` (trailing comma OK).
@@ -103,18 +110,43 @@ unsafe { let reg = 0x40001000 as *u32; }
 - `static_assert(cond);` — `cond` must be a constant expression; valid at
   module top level or inside a function body.
 
-## unsafe operation table
+## unsafe (deprecated)
 
-| Operation | outside `unsafe` | inside `unsafe` |
-|-----------|------------------|-----------------|
-| Constant array index out of bounds | error | allowed |
-| Uninitialized variable | error | error (never allowed) |
-| Pointer arithmetic | error | allowed |
-| Dereference of a raw pointer | error | allowed |
-| Inline assembly (`asm("...")`) | error | allowed |
-| Unsafe casts (e.g. `*void as *T`) | error | allowed |
+`unsafe { }` and `unsafe fn` are still parsed, have no effect, and produce a
+warning. There are no operations that need them. Uninitialized variables are
+still an error.
 
-Taking an address (`&x`) is always safe, in or out of `unsafe`.
+## Packed structs
+
+`packed struct Name { ... }` removes padding and sets alignment to 1.
+`export packed struct` is also valid. `packed` applies only to structs. This
+feature is in the parser and tests but not in `SPECS.md`.
+
+```rust
+packed struct Hdr { tag: u8; size: u32; }
+static_assert(sizeof(Hdr) == 5);
+static_assert(offsetof(Hdr, size) == 1);
+```
+
+## Inline assembly
+
+`asm("template")` or `asm("template" : outputs : inputs)`. Each operand is
+`"constraint"(expr)`, operands are comma-separated.
+
+- At most one output. Its constraint starts with `=`, and the expression must
+  be a mutable lvalue.
+- Read-write (`+`) and memory output (`=m`) operands are not supported.
+- Input constraints must not start with `=`.
+- There is no clobber list.
+- The template uses `$0`, `$1`, numbered from the output, then the inputs.
+- With no output, keep both colons separated by a space:
+  `asm("nop" : : "r"(v));`
+- The value of an `asm` expression with an output is the output value.
+
+```rust
+let mut sum: i32 = 0;
+asm("movl $1, $0" : "=r"(sum) : "r"(42));
+```
 
 ## Functions — full attribute list
 
@@ -124,13 +156,13 @@ of the declaration.
 
 ```rust
 fn inline add_small(a: u8, b: u8) -> u8 inline { return a + b; }
-fn irq_handler() naked { unsafe { asm("push rdi"); } }
+fn irq_handler() naked { asm("push rdi"); }
 fn panic() noreturn { loop { asm("hlt"); } }
 fn boot_entry() section(".boot") { }
 ```
 
 `extern fn` — no body, resolved at link time (libc by default). Calling
-one does **not** require `unsafe`. Can be variadic (`...` marks the tail,
+one is a plain call. Can be variadic (`...` marks the tail,
 fixed params first) and can take function-pointer / `*void` params to
 bridge C callbacks (`atexit`, `qsort`, etc.).
 
@@ -160,7 +192,7 @@ See `references/cli.md` for the full flag reference. Two build modes:
 | NULL | yes | `?T` optional types |
 | `errno`-style failure | yes | `!T` error types + `?`/`else` |
 | Safe strings | no | `[]u8` slices (bounds-known) |
-| Explicit unsafe | no | yes, `unsafe { }` required |
+| Raw pointers | yes | yes, no special block needed |
 | Macros | yes | no |
 | Generics | no | no (Cinder has none either — don't invent them) |
 
@@ -179,4 +211,3 @@ See `references/cli.md` for the full flag reference. Two build modes:
 | slice | a view into memory: a pointer and a length |
 | static | a global variable with one instance |
 | target | a machine architecture for code generation |
-| unsafe | code with unchecked/raw operations |

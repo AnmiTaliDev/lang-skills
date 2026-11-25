@@ -205,7 +205,7 @@ export fn dealloc(p: *u8)
 ```rust
 let p = alloc(16);
 if p == null { return 1; }
-unsafe { p[0] = 65; }
+p[0] = 65;
 dealloc(p);
 ```
 
@@ -232,7 +232,7 @@ export extern fn remove(path: *u8) -> i32;
 if !file_write_all(path, "hello file") { return 1; }
 let data = file_read_all(path) else { return 2; };
 println(data);
-unsafe { dealloc(data.ptr); }
+dealloc(data.ptr);
 ```
 
 ## std/panic.cnd
@@ -254,6 +254,6 @@ export extern fn inl(port: u16) -> u32;
 ```
 
 Only available/meaningful under `--target=x86_64-freestanding`
-(`--emit=kernel`). Hosted-only modules (`io`, `alloc`, `vec`, `string`,
+(`--emit=freestanding`). Hosted-only modules (`io`, `alloc`, `vec`, `string`,
 `file`) are NOT available on that target since they need libc — see
 `cli.md` for bare-metal build flags.

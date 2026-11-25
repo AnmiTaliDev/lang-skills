@@ -9,7 +9,7 @@ lexer -> parser -> loader -> sema -> (codegen if building).
 | Command | Action |
 |---------|--------|
 | `check <file>` | lex, parse, load modules, run static analysis only |
-| `build <file>` | `check`, then generate output (LLVM IR / asm / obj / bin / kernel) |
+| `build <file>` | `check`, then generate output (LLVM IR / asm / obj / bin / freestanding) |
 | `tokens <file>` | dump the token stream (debug) |
 | `ast <file>` | dump the AST (debug) |
 
@@ -19,11 +19,11 @@ lexer -> parser -> loader -> sema -> (codegen if building).
 |--------|---------|
 | `-I <dir>` | add a module search directory (repeatable) |
 | `--target=<arch>` | target architecture; default `x86_64`. Known: `x86_64`, `x86_64-freestanding` |
-| `--emit=llvm\|asm\|obj\|bin\|kernel` | output format; default `llvm` |
+| `--emit=llvm\|asm\|obj\|bin\|freestanding` | output format; default `llvm` |
 | `--mode=debug\|release` | build mode; default `debug` |
-| `--linker-script=<path>` | linker script, used with `--emit=kernel` |
-| `--boot=<file.s>` | raw assembly boot stub linked into the kernel (e.g. multiboot entry) |
-| `--entry=<name>` | kernel entry symbol; default `_start` |
+| `--linker-script=<path>` | linker script, required by `--emit=freestanding` |
+| `--boot=<file.s>` | raw assembly boot stub linked into the freestanding image (e.g. multiboot entry) |
+| `--entry=<name>` | freestanding entry symbol; default `_start` |
 | `-o <file>` | output file (default derived from input: `.ll`/`.s`/`.o`/bare name) |
 | `-v`, `--verbose` | keep intermediate `.ll`/`.s`/`.o` files, print toolchain commands |
 | `-h`, `--help` | show help |
@@ -47,21 +47,30 @@ cinder build main.cnd --emit=bin -o main -I lib
 # release mode
 cinder build main.cnd --emit=bin --mode=release -o main
 
-# freestanding kernel image (bare metal, no libc)
+# freestanding image (bare metal, no libc)
 cinder build main.cnd --target=x86_64-freestanding \
-    --emit=kernel --linker-script=linker.ld --boot=boot.s -o kernel.bin
+    --emit=freestanding --linker-script=linker.ld --boot=boot.s -o kernel.bin
 ```
+
+## Diagnostics
+
+Errors and warnings are printed as `error: ...` or `warning: ...`, followed by
+`--> file:line:col`, the source line with a caret, and optional `= note:`
+lines. Warnings alone do not fail the command (exit code 0). Errors exit 1.
+
+`--emit=kernel` is a temporary alias for `--emit=freestanding`. Use the new
+name.
 
 ## Bare-metal (kernel) builds
 
-`--emit=kernel` produces a freestanding ELF with no libc. Needs:
+`--emit=freestanding` produces a freestanding ELF with no libc. Needs:
 - `--boot=<file.s>` — a raw assembly entry stub (e.g. multiboot header +
   stack setup + `call kernel_main`)
 - `--linker-script=<path>` — places sections/base address
 - An `export fn kernel_main() { ... }` in your `.cnd` file — it must be
   `export`ed because the boot stub calls it by symbol name
-- Only `std/x86.cnd` (port I/O: `outb`/`inb`/etc.) and `asm("...")` inside
-  `unsafe` are available; no `io`/`alloc`/`vec`/`string` (they need libc)
+- `std/x86.cnd` (port I/O: `outb`/`inb`/etc.) and `asm("...")` are available. There is
+  no `io`/`alloc`/`vec`/`string` (they need libc)
 
 Minimal example set (from `examples/kernel/` in the repo):
 
@@ -103,22 +112,20 @@ SECTIONS {
 ```rust
 use "std/x86.cnd";
 
-unsafe fn uart_write_byte(b: u8) {
+fn uart_write_byte(b: u8) {
     while (inb(0x3FD) & 0x20) == 0 { asm("nop"); }
     outb(0x3F8, b);
 }
 
 export fn kernel_main() {
-    unsafe {
-        uart_write_byte('H' as u8);
-        loop { asm("hlt"); }
-    }
+    uart_write_byte('H' as u8);
+    loop { asm("hlt"); }
 }
 ```
 
 Build & run under QEMU:
 ```bash
-ruby main.rb build main.cnd --emit=kernel \
+ruby main.rb build main.cnd --emit=freestanding \
     --boot=boot.s --linker-script=linker.ld -o kernel
 qemu-system-i386 -nographic -kernel kernel
 ```

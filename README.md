@@ -15,7 +15,7 @@ superficially resembles, give it a verified, condensed spec to work from.
 
 | Skill | Language | Description |
 |---|---|---|
-| [`cinder-lang`](./cinder-lang) | [Cinder](https://github.com/z3nnix/cinder) | A minimalist, safe-by-default, C-like systems language compiling to LLVM IR. |
+| [`cinder-lang`](./cinder-lang) | [Cinder](https://github.com/z3nnix/cinder) | A minimalist C-like systems language compiling to LLVM IR. |
 
 ## Installing a skill
 

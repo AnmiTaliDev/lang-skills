@@ -1,8 +1,7 @@
 # Cinder Syntax Reference
 
-All examples below are adapted from the real, test-verified examples in the
-Cinder repo's `docs/` chapter files. Every snippet compiles as shown unless
-noted.
+Examples are adapted from the `docs/` chapter files and compiler tests in the
+Cinder repo (commit `a94bfdf`). Many are fragments, not whole programs.
 
 ## Table of contents
 - [Comments](#comments)
@@ -15,7 +14,7 @@ noted.
 - [Arrays & slices](#arrays--slices)
 - [Optionals & errors](#optionals--errors)
 - [defer](#defer)
-- [Pointers & unsafe](#pointers--unsafe)
+- [Pointers & inline asm](#pointers--inline-asm)
 - [Function pointers](#function-pointers)
 - [FFI (extern fn)](#ffi-extern-fn)
 - [Modules (use/export)](#modules)
@@ -126,6 +125,9 @@ let done = false;
 if ok && !done { ... }
 ```
 
+`and` and `or` are also accepted. After `==`, `or` can chain values:
+`if c == 32 or 9 or 10 { ... }` compares `c` with each value.
+
 ### char
 
 A char literal is one ASCII byte in single quotes, **type `i32`**.
@@ -194,25 +196,6 @@ fn classify(v: i32) -> []u8 {
 }
 ```
 
-### unsafe fn
-
-Marking a function `unsafe` means its whole body is treated as an `unsafe`
-block, and every call site must itself be inside `unsafe { ... }`:
-
-```rust
-unsafe fn peek(v: *u32) -> u32 {
-    return *v;
-}
-
-fn main() -> i32 {
-    let secret: u32 = 42;
-    unsafe {
-        let got = peek(&secret);
-    }
-    return 0;
-}
-```
-
 ### Function attributes
 
 Attribute keywords: `inline`, `naked`, `noreturn`, `section`. `inline` and
@@ -225,7 +208,7 @@ fn inline add_small(a: u8, b: u8) -> u8 inline {
 }
 
 fn irq_handler() naked {
-    unsafe { asm("push rdi"); }
+    asm("push rdi");
 }
 
 fn panic() noreturn {
@@ -406,6 +389,13 @@ fn grow(r: *Rect, k: i32) {
 
 Structs cannot be compared with `==` (no aggregate comparison).
 
+`packed struct` has no padding and has alignment 1:
+
+```rust
+packed struct Hdr { tag: u8; size: u32; }
+static_assert(sizeof(Hdr) == 5);
+```
+
 `sizeof(T)`, `alignof(T)`, `offsetof(T, field)` are compile-time constants
 matching the target's C ABI:
 
@@ -445,8 +435,8 @@ Enums are the idiomatic error type for `!T` functions:
 enum IoError { NotFound; PermissionDenied; DeviceBusy; }
 ```
 
-An enum value is stored as its variant index; converting to an int is an
-unsafe cast: `unsafe { let idx = Color.Blue as i32; }` (2).
+An enum value is stored as its variant index. Convert it with a cast:
+`let idx = Color.Blue as i32;` (2).
 
 ---
 
@@ -467,9 +457,8 @@ let whole = arr[..];           // convert whole array to a slice
 
 Slice operator forms: `[..]`, `[a..]`, `[..b]`, `[a..b]`.
 
-Constant out-of-bounds indexing is a compile error outside `unsafe`
-(`let x = a[9];` on a 3-element array fails to compile); runtime indexes
-are bounds-checked in debug builds.
+Constant out-of-bounds indexes are not rejected at compile time. Indexes are
+bounds-checked at runtime in debug builds only.
 
 Strings are `[]u8` slices too — same indexing/slicing rules, `.ptr` /
 `.len` fields.
@@ -486,7 +475,7 @@ fn total(vals: []i32) -> i32 {
 
 ## Optionals & errors
 
-No `NULL`/nil in safe code. `?T` = value or `none`. `!T` = value or an
+Do not use `null` to signal failure. `?T` = value or `none`. `!T` = value or an
 error (usually an enum variant).
 
 ```rust
@@ -565,30 +554,29 @@ right after.
 
 ---
 
-## Pointers & unsafe
+## Pointers & inline asm
 
-Taking an address (`&x`) is always safe. Dereferencing, pointer arithmetic,
-and unsafe casts require `unsafe { ... }`.
+Address-of, dereference, pointer arithmetic, pointer indexing and slicing,
+pointer casts, and `asm` are allowed everywhere. Do not wrap them in
+`unsafe`: it is deprecated and only produces a warning.
 
 ```rust
 let mut x = 5;
 let p = &x;
-unsafe { *p += 10; }
+*p += 10;
 ```
 
 "Method" / mutate-through-pointer pattern:
 
 ```rust
 fn swap(a: *i32, b: *i32) {
-    unsafe {
-        let t = *a;
-        *a = *b;
-        *b = t;
-    }
+    let t = *a;
+    *a = *b;
+    *b = t;
 }
 ```
 
-`null` is the null pointer literal:
+`null` is the null pointer literal. Never dereference it:
 
 ```rust
 let p: *i32 = null;
@@ -598,35 +586,35 @@ if p == null { println("null pointer"); }
 Pointer qualifiers:
 
 ```rust
-let a: *const u32 = &value;       // read-only
-let b: *volatile u32 = &reg;      // volatile access
+let a: *const u32 = &value;
+let b: *volatile u32 = &reg;
 let c: *const volatile u32 = &reg;
 ```
 
 `*void` is a pointer to an unknown type. Any pointer coerces to `*void`
-implicitly; converting back needs an unsafe cast:
+implicitly. Cast it back with `as`. It cannot be dereferenced, indexed, or
+sliced:
 
 ```rust
 let opaque: *void = &n;
-unsafe {
-    let back: *u64 = opaque as *u64;
-}
+let back: *u64 = opaque as *u64;
 ```
 
-Pointer arithmetic (needs `unsafe`):
+Pointer arithmetic:
 
 ```rust
-let base = arr[..].ptr;   // array -> slice -> .ptr
-unsafe {
-    let v1 = *base;
-    let v2 = *(base + 1);
-}
+let base = arr[..].ptr;
+let v1 = *base;
+let v2 = *(base + 1);
 ```
 
-Inline assembly (needs `unsafe`):
+Inline assembly. Operand rules are in `spec.md`:
 
 ```rust
-unsafe { asm("wfi"); }
+asm("wfi");
+
+let mut sum: i32 = 0;
+asm("movl $1, $0" : "=r"(sum) : "r"(42));
 ```
 
 ---
@@ -674,7 +662,7 @@ fn emit(fmt: *Format, v: i32) {
 ## FFI (extern fn)
 
 `extern fn` declares a function with no body, resolved at link time
-(links against libc by default). Calling it does **not** require `unsafe`:
+(links against libc by default). It is called like any other function:
 
 ```rust
 extern fn abs(n: i32) -> i32;
@@ -696,17 +684,15 @@ let msg = c"hello, libc!";
 let len = my_strlen(msg);
 ```
 
-C allocations come back as raw pointers — dereferencing/indexing them
-needs `unsafe`:
+C allocations come back as raw pointers and can be dereferenced and indexed
+directly:
 
 ```rust
 extern fn malloc(size: usize) -> *u8;
 extern fn free(p: *u8);
 
 let p = malloc(64);
-unsafe {
-    p[0] = 65;
-}
+p[0] = 65;
 free(p);
 ```
 

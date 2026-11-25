@@ -2,7 +2,7 @@
 
 An agent skill that teaches AI coding agents (Claude Code and others that support the [agent
 skills format](https://docs.claude.com/en/docs/claude-code/skills)) how to write, edit, review,
-and explain code in [Cinder](https://github.com/z3nnix/cinder) — a minimalist, safe-by-default,
+and explain code in [Cinder](https://github.com/z3nnix/cinder), a minimalist,
 C-like systems language that compiles to LLVM IR.
 
 The skill was written by cloning and reading the real Cinder compiler and standard library source,
@@ -12,7 +12,7 @@ so the agent works from verified rules instead of guessing syntax by analogy to 
 
 - `SKILL.md` — entry point: quick orientation, core rules, minimal working program, workflow.
 - `references/syntax.md` — variables, types, control flow, structs, enums, optionals/errors,
-  pointers/unsafe, modules.
+  pointers, inline asm, modules.
 - `references/stdlib.md` — every function/struct exported by Cinder's standard library.
 - `references/cli.md` — the `cinder` CLI (`check`/`build`/`tokens`/`ast`, flags, bare-metal builds).
 - `references/spec.md` — condensed, authoritative language spec.
