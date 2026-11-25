@@ -15,6 +15,7 @@ superficially resembles, give it a verified, condensed spec to work from.
 
 | Skill | Language | Description |
 |---|---|---|
+| [`agnostic-lang`](./agnostic-lang) | [Agnostic](https://github.com/agnosticlang/agnostic) | A compiled systems language with Go-like syntax and LLVM and libgccjit backends. |
 | [`cinder-lang`](./cinder-lang) | [Cinder](https://github.com/z3nnix/cinder) | A minimalist C-like systems language compiling to LLVM IR. |
 
 ## Installing a skill
